@@ -1,0 +1,92 @@
+- hosts: all
+  become: yes
+  tasks:
+    - name: disable SELinux
+      command: setenforce 0
+
+    - name: disable SELinux on reboot
+      selinux:
+        state: disabled
+
+    - name: ensure net.bridge.bridge-nf-call-ip6tables is set to 1
+      sysctl:
+       name: net.bridge.bridge-nf-call-ip6tables
+       value: "1"
+       state: present
+
+    - name: ensure net.bridge.bridge-nf-call-iptables is set to 1
+      sysctl:
+       name: net.bridge.bridge-nf-call-iptables
+       value: "1"
+       state: present
+
+    - name: Disable SWAP since kubernetes can't work with swap enabled (1/2)
+      shell: |
+        swapoff -a
+
+    - name: Disable SWAP in fstab since kubernetes can't work with swap enabled (2/2)
+      replace:
+        path: /etc/fstab
+        regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+        replace: '# \1'
+
+    - name: Stop and disable firewalld.
+      service:
+        name: firewalld
+        state: stopped
+        enabled: False
+
+    - name: install Docker
+      yum:
+        name: docker
+        state: present
+        update_cache: true
+
+    - name: start Docker
+      service:
+        name: docker
+        state: started
+
+    - name: add Kubernetes' YUM repository
+      yum_repository:
+       name: Kubernetes
+       description: Kubernetes YUM repository
+       baseurl: https://mirrors.aliyun.com/kubernetes/yum/repos/kubernetes-el7-x86_64/
+       gpgkey: https://mirrors.aliyun.com/kubernetes/yum/doc/yum-key.gpg https://mirrors.aliyun.com/kubernetes/yum/doc/rpm-package-key.gpg
+       gpgcheck: true
+
+    - name: install kubelet
+      yum:
+         name: kubelet-1.20.0
+         state: present
+         update_cache: true
+
+    - name: install kubeadm
+      yum:
+         name: kubeadm-1.20.0
+         state: present
+
+    - name: start kubelet
+      service:
+        name: kubelet
+        enabled: yes
+        state: started
+
+    - name: Add IP address of all hosts to all hosts
+      lineinfile:
+        dest: /etc/hosts
+        regexp: '.*{{ item }}$'
+        line: "{{ hostvars[item].ansible_host }} {{item}}"
+        state: present
+      when: hostvars[item].ansible_host is defined
+      with_items: "{{ groups.all }}"
+
+- hosts: k8s-master
+  become: yes
+  tasks:
+   - name: install kubectl
+     yum:
+        name: kubectl-1.20.0
+        state: present
+        allow_downgrade: yes
+
