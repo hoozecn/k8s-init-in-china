@@ -259,6 +259,18 @@
         chdir: $HOME
         creates: cluster_initialized.txt
 
+    - name: create .kube directory
+      file:
+        path: $HOME/.kube
+        state: directory
+        mode: 0755
+
+    - name: copy admin.conf to user's kube config
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: $HOME/.kube/config
+        remote_src: yes
+
     - name: install Pod network
       become: yes
       shell: kubectl apply -f /etc/flannel.yaml
